@@ -1,0 +1,25 @@
+# =============================================================
+# requirements.txt
+#
+# Python package dependencies for the Expense Analyzer backend.
+#
+# How to install:
+#   1. Activate the virtual environment first:
+#      .\venv\Scripts\Activate.ps1
+#   2. Then install all packages:
+#      python -m pip install -r requirements.txt
+#
+# Package explanations:
+#   fastapi   — The web framework that handles routing, validation, docs
+#   uvicorn   — ASGI server that actually runs the FastAPI app
+#   pydantic  — Data validation library (FastAPI uses it automatically)
+#
+# Packages to be added in Phase 3:
+#   sqlalchemy        — ORM for SQL Server database access
+#   pyodbc            — SQL Server driver for Python
+#   python-dotenv     — Loads .env file for database credentials
+# =============================================================
+
+fastapi==0.141.1
+uvicorn==0.53.0
+pydantic==2.13.5
