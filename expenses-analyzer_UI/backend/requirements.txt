@@ -19,7 +19,9 @@
 #   pyodbc            — SQL Server driver for Python
 #   python-dotenv     — Loads .env file for database credentials
 # =============================================================
-
 fastapi==0.141.1
 uvicorn==0.53.0
 pydantic==2.13.5
+SQLAlchemy
+python-dotenv
+pyodbc
