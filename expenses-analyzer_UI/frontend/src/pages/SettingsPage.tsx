@@ -5,7 +5,9 @@
 // (Security settings, preferences, account details)
 // ============================================================
 
-import { Settings, User, Bell, Shield, Database } from 'lucide-react';
+import { useState } from 'react';
+import { Settings, User, Bell, Shield, Database, RefreshCw, Check } from 'lucide-react';
+import { resetDemoExpenses } from '../services/expenseApi';
 
 const SETTINGS_SECTIONS = [
   {
@@ -35,6 +37,17 @@ const SETTINGS_SECTIONS = [
 ];
 
 export default function SettingsPage() {
+  const [resetSuccess, setResetSuccess] = useState(false);
+
+  const handleResetData = () => {
+    resetDemoExpenses();
+    setResetSuccess(true);
+    setTimeout(() => {
+      setResetSuccess(false);
+      window.location.reload();
+    }, 1200);
+  };
+
   return (
     <div>
       <div className="page-header">
@@ -45,6 +58,57 @@ export default function SettingsPage() {
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+        {/* Reset Mock Data Action Card */}
+        <div
+          className="dashboard-card"
+          style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-5)' }}
+        >
+          <div
+            className="card-icon"
+            style={{ backgroundColor: 'var(--bg-elevated)', flexShrink: 0 }}
+          >
+            <RefreshCw size={20} color="var(--accent-primary)" />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div
+              style={{
+                fontSize: 'var(--font-size-base)',
+                fontWeight: 600,
+                color: 'var(--text-primary)',
+              }}
+            >
+              Reset Mock Data
+            </div>
+            <div
+              style={{
+                fontSize: 'var(--font-size-sm)',
+                color: 'var(--text-secondary)',
+                marginTop: 2,
+              }}
+            >
+              Restore initial hardcoded sample expenses in localStorage.
+            </div>
+          </div>
+          <button
+            className="btn btn-secondary"
+            onClick={handleResetData}
+            disabled={resetSuccess}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          >
+            {resetSuccess ? (
+              <>
+                <Check size={16} color="var(--accent-success)" />
+                Reset Complete!
+              </>
+            ) : (
+              <>
+                <RefreshCw size={14} />
+                Reset Data
+              </>
+            )}
+          </button>
+        </div>
+
         {SETTINGS_SECTIONS.map(({ icon: Icon, title, description, badge }) => (
           <div
             key={title}
@@ -94,7 +158,7 @@ export default function SettingsPage() {
         ))}
       </div>
 
-      {/* Phase info box */}
+      {/* Standalone info box */}
       <div
         style={{
           marginTop: 'var(--space-6)',
@@ -117,11 +181,11 @@ export default function SettingsPage() {
               marginBottom: 4,
             }}
           >
-            Currently in Phase 1 — Frontend UI
+            Standalone Frontend Mode Active
           </div>
           <div style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-secondary)' }}>
-            Settings will be fully implemented in Phase 6 (Security &amp; Configuration).
-            Features include environment variables, CORS, database credentials, and user preferences.
+            The app is currently running live without requiring any backend server or database.
+            All CRUD actions (add, edit, filter, delete, summaries, charts) work offline using browser local storage and preloaded mock data.
           </div>
         </div>
       </div>

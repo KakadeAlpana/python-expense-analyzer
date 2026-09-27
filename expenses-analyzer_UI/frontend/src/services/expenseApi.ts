@@ -19,13 +19,15 @@ import type {
   MonthlySummary,
   Category,
 } from '../types/expense';
+import { mockExpenses } from '../data/mockExpenses';
 
 // ============================================================
 // Configuration
 // ============================================================
 
+// Standalone mode: default to true unless VITE_USE_DEMO_DATA is explicitly set to 'false'
 const DEMO_MODE =
-  import.meta.env.VITE_USE_DEMO_DATA === 'true';
+  import.meta.env.VITE_USE_DEMO_DATA !== 'false';
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
@@ -36,74 +38,7 @@ const STORAGE_KEY = 'expense-analyzer-demo-expenses';
 // DEMO DATA
 // ============================================================
 
-const INITIAL_EXPENSES: Expense[] = [
-  {
-    id: 1,
-    description: 'Grocery Shopping',
-    amount: 2500,
-    category: 'Food',
-    date: '2026-09-05',
-    paymentMethod: 'UPI',
-    notes: 'Monthly groceries',
-    createdAt: '2026-09-05T10:00:00',
-    updatedAt: '2026-09-05T10:00:00',
-  },
-  {
-    id: 2,
-    description: 'Office Travel',
-    amount: 1200,
-    category: 'Travel',
-    date: '2026-09-08',
-    paymentMethod: 'UPI',
-    notes: 'Cab and auto',
-    createdAt: '2026-09-08T09:30:00',
-    updatedAt: '2026-09-08T09:30:00',
-  },
-  {
-    id: 3,
-    description: 'Electricity Bill',
-    amount: 1800,
-    category: 'Bills',
-    date: '2026-09-10',
-    paymentMethod: 'Net Banking',
-    notes: 'September electricity bill',
-    createdAt: '2026-09-10T11:00:00',
-    updatedAt: '2026-09-10T11:00:00',
-  },
-  {
-    id: 4,
-    description: 'Movie',
-    amount: 800,
-    category: 'Entertainment',
-    date: '2026-09-14',
-    paymentMethod: 'Card',
-    notes: 'Weekend movie',
-    createdAt: '2026-09-14T18:00:00',
-    updatedAt: '2026-09-14T18:00:00',
-  },
-  {
-    id: 5,
-    description: 'Medicines',
-    amount: 950,
-    category: 'Healthcare',
-    date: '2026-09-16',
-    paymentMethod: 'Cash',
-    notes: 'Pharmacy',
-    createdAt: '2026-09-16T15:00:00',
-    updatedAt: '2026-09-16T15:00:00',
-  },
-  {
-    id: 6,
-    description: 'New Clothes',
-    amount: 3200,
-    category: 'Shopping',
-    date: '2026-09-18',
-    paymentMethod: 'Card',
-    notes: 'Personal shopping',
-    createdAt: '2026-09-18T17:00:00',
-    updatedAt: '2026-09-18T17:00:00',
-  },
-];
+const INITIAL_EXPENSES: Expense[] = mockExpenses;
 
 // ============================================================
 // DEMO STORAGE HELPERS
@@ -138,6 +73,14 @@ function saveDemoExpenses(expenses: Expense[]): void {
     STORAGE_KEY,
     JSON.stringify(expenses)
   );
+}
+
+export function resetDemoExpenses(): Expense[] {
+  localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify(INITIAL_EXPENSES)
+  );
+  return INITIAL_EXPENSES;
 }
 
 // ============================================================
