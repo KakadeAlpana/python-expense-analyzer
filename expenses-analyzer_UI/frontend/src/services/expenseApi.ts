@@ -1,19 +1,14 @@
 // ============================================================
 // src/services/expenseApi.ts
 //
-// Central API service — the ONLY place the frontend talks to FastAPI.
+// Expense API service.
 //
-// All components call functions from here.
-// No component should ever construct its own fetch() URL.
+// DEMO MODE:
+// The frontend can run independently without FastAPI/SQL Server.
+// Data is stored in browser localStorage.
 //
-// Backend base URL comes from the .env file:
-//   VITE_API_BASE_URL=http://127.0.0.1:8000
-//
-// Response shape notes (why we transform some responses):
-//   - /summary          → field names differ from frontend types → we map them
-//   - /category-summary → returns a dict  { "Food": 850 }       → we convert to array
-//   - /monthly-summary  → returns a dict  { "September 2026": 5320 } → we convert to array
-//   - /expenses list    → wrapped in { success, data, total }   → we unwrap .data
+// REAL API MODE:
+// Set VITE_USE_DEMO_DATA=false and provide VITE_API_BASE_URL.
 // ============================================================
 
 import type {
@@ -25,19 +20,130 @@ import type {
   Category,
 } from '../types/expense';
 
-// ---- Base URL -------------------------------------------------------
-// Read from Vite environment variable (set in .env)
-// Falls back to 127.0.0.1:8000 for safety
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
+// ============================================================
+// Configuration
+// ============================================================
 
-// ---- Internal helper: handle HTTP errors ----------------------------
+const DEMO_MODE =
+  import.meta.env.VITE_USE_DEMO_DATA === 'true';
 
-/**
- * Thin wrapper around fetch that:
- *   1. Adds Content-Type header for POST/PUT
- *   2. Throws a descriptive Error for non-2xx responses
- *   3. Returns the parsed JSON body
- */
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
+
+const STORAGE_KEY = 'expense-analyzer-demo-expenses';
+
+// ============================================================
+// DEMO DATA
+// ============================================================
+
+const INITIAL_EXPENSES: Expense[] = [
+  {
+    id: 1,
+    description: 'Grocery Shopping',
+    amount: 2500,
+    category: 'Food',
+    date: '2026-09-05',
+    paymentMethod: 'UPI',
+    notes: 'Monthly groceries',
+    createdAt: '2026-09-05T10:00:00',
+    updatedAt: '2026-09-05T10:00:00',
+  },
+  {
+    id: 2,
+    description: 'Office Travel',
+    amount: 1200,
+    category: 'Travel',
+    date: '2026-09-08',
+    paymentMethod: 'UPI',
+    notes: 'Cab and auto',
+    createdAt: '2026-09-08T09:30:00',
+    updatedAt: '2026-09-08T09:30:00',
+  },
+  {
+    id: 3,
+    description: 'Electricity Bill',
+    amount: 1800,
+    category: 'Bills',
+    date: '2026-09-10',
+    paymentMethod: 'Net Banking',
+    notes: 'September electricity bill',
+    createdAt: '2026-09-10T11:00:00',
+    updatedAt: '2026-09-10T11:00:00',
+  },
+  {
+    id: 4,
+    description: 'Movie',
+    amount: 800,
+    category: 'Entertainment',
+    date: '2026-09-14',
+    paymentMethod: 'Card',
+    notes: 'Weekend movie',
+    createdAt: '2026-09-14T18:00:00',
+    updatedAt: '2026-09-14T18:00:00',
+  },
+  {
+    id: 5,
+    description: 'Medicines',
+    amount: 950,
+    category: 'Healthcare',
+    date: '2026-09-16',
+    paymentMethod: 'Cash',
+    notes: 'Pharmacy',
+    createdAt: '2026-09-16T15:00:00',
+    updatedAt: '2026-09-16T15:00:00',
+  },
+  {
+    id: 6,
+    description: 'New Clothes',
+    amount: 3200,
+    category: 'Shopping',
+    date: '2026-09-18',
+    paymentMethod: 'Card',
+    notes: 'Personal shopping',
+    createdAt: '2026-09-18T17:00:00',
+    updatedAt: '2026-09-18T17:00:00',
+  },
+];
+
+// ============================================================
+// DEMO STORAGE HELPERS
+// ============================================================
+
+function getDemoExpenses(): Expense[] {
+  const stored = localStorage.getItem(STORAGE_KEY);
+
+  if (!stored) {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify(INITIAL_EXPENSES)
+    );
+
+    return INITIAL_EXPENSES;
+  }
+
+  try {
+    return JSON.parse(stored) as Expense[];
+  } catch {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify(INITIAL_EXPENSES)
+    );
+
+    return INITIAL_EXPENSES;
+  }
+}
+
+function saveDemoExpenses(expenses: Expense[]): void {
+  localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify(expenses)
+  );
+}
+
+// ============================================================
+// REAL API HELPER
+// ============================================================
+
 async function apiFetch<T>(
   path: string,
   options: RequestInit = {}
@@ -49,27 +155,30 @@ async function apiFetch<T>(
     ...(options.headers ?? {}),
   };
 
-  const response = await fetch(url, { ...options, headers });
+  const response = await fetch(url, {
+    ...options,
+    headers,
+  });
 
   if (!response.ok) {
-    // Try to extract a message from the FastAPI error response
     let message = `Server error: ${response.status} ${response.statusText}`;
+
     try {
       const errorBody = await response.json();
-      // FastAPI validation errors come as { detail: [...] }
+
       if (errorBody.detail) {
         if (typeof errorBody.detail === 'string') {
           message = errorBody.detail;
         } else if (Array.isArray(errorBody.detail)) {
-          // Pydantic validation errors: extract first message
           message = errorBody.detail[0]?.msg ?? message;
         }
       } else if (errorBody.message) {
         message = errorBody.message;
       }
     } catch {
-      // Could not parse body — use the default message above
+      // Use default error message
     }
+
     throw new Error(message);
   }
 
@@ -77,179 +186,472 @@ async function apiFetch<T>(
 }
 
 // ============================================================
-// Shape of raw API responses (before transformation)
+// API RESPONSE TYPES
 // ============================================================
 
-// Backend wrapper for list responses
 interface RawListResponse {
   success: boolean;
   data: Expense[];
   total: number;
 }
 
-// Backend wrapper for single-expense responses
 interface RawSingleResponse {
   success: boolean;
   data: Expense;
   message?: string;
 }
 
-// Backend summary — field names differ from the frontend type
 interface RawSummaryResponse {
-  totalExpense: number;       // ← maps to totalExpenses
-  thisMonth: number;          // ← maps to currentMonthExpenses
+  totalExpense: number;
+  thisMonth: number;
   highestCategory: string | null;
-  transactionCount: number;   // ← maps to numberOfTransactions
+  transactionCount: number;
 }
 
-// Backend category-summary — dict, not array
 interface RawCategorySummaryResponse {
-  data: Record<string, number>;  // e.g. { "Food": 850, "Travel": 320 }
+  data: Record<string, number>;
 }
 
-// Backend monthly-summary — dict, not array
 interface RawMonthlySummaryResponse {
-  data: Record<string, number>;  // e.g. { "September 2026": 5320 }
+  data: Record<string, number>;
 }
 
 // ============================================================
-// Exported API functions
+// GET EXPENSES
 // ============================================================
 
-// ----------------------------------------------------------
-// GET /api/expenses
-// Supports optional query parameters for server-side filtering.
-// ----------------------------------------------------------
 export async function getExpenses(params?: {
   search?: string;
   category?: string;
   date_from?: string;
   date_to?: string;
 }): Promise<Expense[]> {
-  // Build query string — only include non-empty values
+
+  // -----------------------------
+  // DEMO MODE
+  // -----------------------------
+
+  if (DEMO_MODE) {
+    let expenses = getDemoExpenses();
+
+    if (params?.search) {
+      const search = params.search.toLowerCase();
+
+      expenses = expenses.filter((expense) =>
+        expense.description
+          .toLowerCase()
+          .includes(search)
+      );
+    }
+
+    if (params?.category) {
+      expenses = expenses.filter(
+        (expense) =>
+          expense.category === params.category
+      );
+    }
+
+    if (params?.date_from) {
+      expenses = expenses.filter(
+        (expense) =>
+          expense.date >= params.date_from!
+      );
+    }
+
+    if (params?.date_to) {
+      expenses = expenses.filter(
+        (expense) =>
+          expense.date <= params.date_to!
+      );
+    }
+
+    return expenses.sort(
+      (a, b) =>
+        new Date(b.date).getTime() -
+        new Date(a.date).getTime()
+    );
+  }
+
+  // -----------------------------
+  // REAL API MODE
+  // -----------------------------
+
   const query = new URLSearchParams();
-  if (params?.search)    query.set('search',    params.search);
-  if (params?.category)  query.set('category',  params.category);
-  if (params?.date_from) query.set('date_from', params.date_from);
-  if (params?.date_to)   query.set('date_to',   params.date_to);
+
+  if (params?.search) {
+    query.set('search', params.search);
+  }
+
+  if (params?.category) {
+    query.set('category', params.category);
+  }
+
+  if (params?.date_from) {
+    query.set('date_from', params.date_from);
+  }
+
+  if (params?.date_to) {
+    query.set('date_to', params.date_to);
+  }
 
   const queryString = query.toString();
-  const path = `/api/expenses${queryString ? `?${queryString}` : ''}`;
 
-  const raw = await apiFetch<RawListResponse>(path);
+  const path =
+    `/api/expenses${queryString ? `?${queryString}` : ''}`;
+
+  const raw =
+    await apiFetch<RawListResponse>(path);
+
   return raw.data;
 }
 
-// ----------------------------------------------------------
-// GET /api/expenses/{id}
-// ----------------------------------------------------------
-export async function getExpenseById(id: number): Promise<Expense> {
-  const raw = await apiFetch<RawSingleResponse>(`/api/expenses/${id}`);
+// ============================================================
+// GET EXPENSE BY ID
+// ============================================================
+
+export async function getExpenseById(
+  id: number
+): Promise<Expense> {
+
+  if (DEMO_MODE) {
+    const expense = getDemoExpenses().find(
+      (item) => item.id === id
+    );
+
+    if (!expense) {
+      throw new Error('Expense not found');
+    }
+
+    return expense;
+  }
+
+  const raw =
+    await apiFetch<RawSingleResponse>(
+      `/api/expenses/${id}`
+    );
+
   return raw.data;
 }
 
-// ----------------------------------------------------------
-// POST /api/expenses
-// Creates a new expense. Returns the created expense from DB.
-// ----------------------------------------------------------
-export async function createExpense(data: ExpenseFormData): Promise<Expense> {
-  const raw = await apiFetch<RawSingleResponse>('/api/expenses', {
-    method: 'POST',
-    body: JSON.stringify(data),
-  });
+// ============================================================
+// CREATE EXPENSE
+// ============================================================
+
+export async function createExpense(
+  data: ExpenseFormData
+): Promise<Expense> {
+
+  if (DEMO_MODE) {
+    const expenses = getDemoExpenses();
+
+    const now = new Date().toISOString();
+
+    const newExpense: Expense = {
+      ...data,
+      id:
+        expenses.length > 0
+          ? Math.max(...expenses.map((e) => e.id)) + 1
+          : 1,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    saveDemoExpenses([
+      newExpense,
+      ...expenses,
+    ]);
+
+    return newExpense;
+  }
+
+  const raw =
+    await apiFetch<RawSingleResponse>(
+      '/api/expenses',
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }
+    );
+
   return raw.data;
 }
 
-// ----------------------------------------------------------
-// PUT /api/expenses/{id}
-// Updates an existing expense. Returns the updated expense.
-// ----------------------------------------------------------
+// ============================================================
+// UPDATE EXPENSE
+// ============================================================
+
 export async function updateExpense(
   id: number,
   data: ExpenseFormData
 ): Promise<Expense> {
-  const raw = await apiFetch<RawSingleResponse>(`/api/expenses/${id}`, {
-    method: 'PUT',
-    body: JSON.stringify(data),
-  });
+
+  if (DEMO_MODE) {
+    const expenses = getDemoExpenses();
+
+    const index = expenses.findIndex(
+      (expense) => expense.id === id
+    );
+
+    if (index === -1) {
+      throw new Error('Expense not found');
+    }
+
+    const updatedExpense: Expense = {
+      ...expenses[index],
+      ...data,
+      id,
+      updatedAt: new Date().toISOString(),
+    };
+
+    expenses[index] = updatedExpense;
+
+    saveDemoExpenses(expenses);
+
+    return updatedExpense;
+  }
+
+  const raw =
+    await apiFetch<RawSingleResponse>(
+      `/api/expenses/${id}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }
+    );
+
   return raw.data;
 }
 
-// ----------------------------------------------------------
-// DELETE /api/expenses/{id}
-// Deletes an expense from the database.
-// ----------------------------------------------------------
-export async function deleteExpense(id: number): Promise<void> {
-  await apiFetch<RawSingleResponse>(`/api/expenses/${id}`, {
-    method: 'DELETE',
-  });
+// ============================================================
+// DELETE EXPENSE
+// ============================================================
+
+export async function deleteExpense(
+  id: number
+): Promise<void> {
+
+  if (DEMO_MODE) {
+    const expenses = getDemoExpenses();
+
+    const filtered = expenses.filter(
+      (expense) => expense.id !== id
+    );
+
+    saveDemoExpenses(filtered);
+
+    return;
+  }
+
+  await apiFetch<RawSingleResponse>(
+    `/api/expenses/${id}`,
+    {
+      method: 'DELETE',
+    }
+  );
 }
 
-// ----------------------------------------------------------
-// GET /api/expenses/summary
-//
-// Backend returns:  { totalExpense, thisMonth, highestCategory, transactionCount }
-// Frontend expects: { totalExpenses, currentMonthExpenses, highestCategory, numberOfTransactions }
-//
-// We map the field names here so the frontend types stay clean.
-// ----------------------------------------------------------
-export async function getExpenseSummary(): Promise<ExpenseSummary> {
-  const raw = await apiFetch<RawSummaryResponse>('/api/expenses/summary');
+// ============================================================
+// SUMMARY
+// ============================================================
+
+export async function getExpenseSummary():
+  Promise<ExpenseSummary> {
+
+  if (DEMO_MODE) {
+    const expenses = getDemoExpenses();
+
+    const totalExpenses = expenses.reduce(
+      (sum, expense) =>
+        sum + expense.amount,
+      0
+    );
+
+    const now = new Date();
+
+    const currentMonthExpenses =
+      expenses
+        .filter((expense) => {
+          const date = new Date(expense.date);
+
+          return (
+            date.getMonth() === now.getMonth() &&
+            date.getFullYear() === now.getFullYear()
+          );
+        })
+        .reduce(
+          (sum, expense) =>
+            sum + expense.amount,
+          0
+        );
+
+    const categoryTotals =
+      expenses.reduce(
+        (acc, expense) => {
+          acc[expense.category] =
+            (acc[expense.category] ?? 0) +
+            expense.amount;
+
+          return acc;
+        },
+        {} as Record<string, number>
+      );
+
+    const highestCategory =
+      Object.entries(categoryTotals)
+        .sort((a, b) => b[1] - a[1])[0]?.[0]
+      ?? null;
+
+    return {
+      totalExpenses,
+      currentMonthExpenses,
+      highestCategory:
+        highestCategory as Category | null,
+      numberOfTransactions:
+        expenses.length,
+    };
+  }
+
+  const raw =
+    await apiFetch<RawSummaryResponse>(
+      '/api/expenses/summary'
+    );
 
   return {
-    totalExpenses:          raw.totalExpense,
-    currentMonthExpenses:   raw.thisMonth,
-    highestCategory:        raw.highestCategory as Category | null,
-    numberOfTransactions:   raw.transactionCount,
+    totalExpenses: raw.totalExpense,
+    currentMonthExpenses: raw.thisMonth,
+    highestCategory:
+      raw.highestCategory as Category | null,
+    numberOfTransactions:
+      raw.transactionCount,
   };
 }
 
-// ----------------------------------------------------------
-// GET /api/expenses/category-summary
-//
-// Backend returns:  { "data": { "Food": 850, "Travel": 320 } }
-// Frontend expects: [{ category: "Food", total: 850 }, ...]
-//
-// We convert the dict → sorted array here.
-// ----------------------------------------------------------
-export async function getCategorySummary(): Promise<CategorySummary[]> {
-  const raw = await apiFetch<RawCategorySummaryResponse>(
-    '/api/expenses/category-summary'
-  );
+// ============================================================
+// CATEGORY SUMMARY
+// ============================================================
+
+export async function getCategorySummary():
+  Promise<CategorySummary[]> {
+
+  if (DEMO_MODE) {
+    const expenses = getDemoExpenses();
+
+    const totals: Record<string, number> = {};
+
+    expenses.forEach((expense) => {
+      totals[expense.category] =
+        (totals[expense.category] ?? 0) +
+        expense.amount;
+    });
+
+    return Object.entries(totals)
+      .map(([category, total]) => ({
+        category: category as Category,
+        total,
+      }))
+      .sort(
+        (a, b) =>
+          b.total - a.total
+      );
+  }
+
+  const raw =
+    await apiFetch<RawCategorySummaryResponse>(
+      '/api/expenses/category-summary'
+    );
 
   return Object.entries(raw.data)
     .map(([category, total]) => ({
       category: category as Category,
       total,
     }))
-    .sort((a, b) => b.total - a.total); // descending by spend
+    .sort(
+      (a, b) =>
+        b.total - a.total
+    );
 }
 
-// ----------------------------------------------------------
-// GET /api/expenses/monthly-summary
-//
-// Backend returns:  { "data": { "September 2026": 5320.0, "August 2026": 1800.0 } }
-// Frontend expects: [{ month: "Sep", total: 5320 }, ...]
-//
-// We convert the dict → chronologically-sorted array with short month labels.
-// ----------------------------------------------------------
-export async function getMonthlySummary(): Promise<MonthlySummary[]> {
-  const raw = await apiFetch<RawMonthlySummaryResponse>(
-    '/api/expenses/monthly-summary'
+// ============================================================
+// MONTHLY SUMMARY
+// ============================================================
+
+export async function getMonthlySummary():
+  Promise<MonthlySummary[]> {
+
+  if (DEMO_MODE) {
+    const expenses = getDemoExpenses();
+
+    const monthlyTotals: Record<string, number> = {};
+
+    expenses.forEach((expense) => {
+      const date = new Date(expense.date);
+
+      const key =
+        `${date.getFullYear()}-${String(
+          date.getMonth() + 1
+        ).padStart(2, '0')}`;
+
+      monthlyTotals[key] =
+        (monthlyTotals[key] ?? 0) +
+        expense.amount;
+    });
+
+    return Object.entries(monthlyTotals)
+      .sort(([a], [b]) =>
+        a.localeCompare(b)
+      )
+      .slice(-6)
+      .map(([key, total]) => {
+        const [year, month] =
+          key.split('-').map(Number);
+
+        const date =
+          new Date(year, month - 1, 1);
+
+        return {
+          month:
+            date.toLocaleString(
+              'en-IN',
+              { month: 'short' }
+            ),
+          total,
+        };
+      });
+  }
+
+  const raw =
+    await apiFetch<RawMonthlySummaryResponse>(
+      '/api/expenses/monthly-summary'
+    );
+
+  const entries =
+    Object.entries(raw.data).map(
+      ([monthLabel, total]) => {
+        const date =
+          new Date(monthLabel);
+
+        return {
+          monthLabel,
+          total,
+          date,
+        };
+      }
+    );
+
+  entries.sort(
+    (a, b) =>
+      a.date.getTime() -
+      b.date.getTime()
   );
 
-  // Parse "September 2026" → Date object for sorting
-  const entries = Object.entries(raw.data).map(([monthLabel, total]) => {
-    const date = new Date(`${monthLabel}`); // "September 2026" is parseable
-    return { monthLabel, total, date };
-  });
-
-  // Sort chronologically (oldest first)
-  entries.sort((a, b) => a.date.getTime() - b.date.getTime());
-
-  // Take last 6 months and produce short label ("Sep")
-  return entries.slice(-6).map(({ date, total }) => ({
-    month: date.toLocaleString('en-IN', { month: 'short' }), // "Sep"
-    total,
-  }));
+  return entries
+    .slice(-6)
+    .map(({ date, total }) => ({
+      month:
+        date.toLocaleString(
+          'en-IN',
+          { month: 'short' }
+        ),
+      total,
+    }));
 }
