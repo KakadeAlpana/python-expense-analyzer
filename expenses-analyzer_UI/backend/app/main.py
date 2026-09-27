@@ -18,8 +18,9 @@
 #   OpenAPI: http://127.0.0.1:8000/openapi.json
 # =============================================================
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.routes.expense_routes import router as expense_router
 
@@ -94,6 +95,30 @@ app.add_middleware(
 # The routes already have prefix="/api/expenses" defined in the router.
 # -------------------------------------------------------------
 app.include_router(expense_router)
+
+
+# -------------------------------------------------------------
+# Global exception handler for RuntimeError
+#
+# When get_db() raises RuntimeError (because DATABASE_URL is not
+# set), FastAPI would normally return a plain 500 with no CORS
+# headers — the browser reports this as a "CORS error" which is
+# misleading.
+#
+# This handler intercepts RuntimeError and returns a proper JSON
+# response with status 503. Because FastAPI exception handlers
+# run inside the middleware stack, the CORS middleware will still
+# add the Access-Control-Allow-Origin header to this response.
+# -------------------------------------------------------------
+@app.exception_handler(RuntimeError)
+async def runtime_error_handler(request: Request, exc: RuntimeError):
+    return JSONResponse(
+        status_code=503,
+        content={
+            "success": False,
+            "message": str(exc),
+        },
+    )
 
 
 # -------------------------------------------------------------
